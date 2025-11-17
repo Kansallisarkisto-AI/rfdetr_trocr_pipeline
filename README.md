@@ -41,8 +41,8 @@ pip install -e .
 
 The pre-trained models can be downloaded from Hugging Face:
 
-- **RF-DETR Detection Model**: [https://huggingface.co/username/rfdetr-model](https://huggingface.co/username/rfdetr-model)
-- **TrOCR Recognition Model**: [https://huggingface.co/username/trocr-model](https://huggingface.co/username/trocr-model)
+- **RF-DETR Detection Model**: [https://huggingface.co/Kansallisarkisto/rfdetr_textline_textregion_detection_model](https://huggingface.co/Kansallisarkisto/rfdetr_textline_textregion_detection_model)
+- **TrOCR Recognition Model**: [https://huggingface.co/Kansallisarkisto/multicentury-htr-model](https://huggingface.co/Kansallisarkisto/multicentury-htr-model)
 
 After downloading, update the model paths in your command line arguments or configuration.
 
@@ -75,8 +75,8 @@ python main.py \
 | `--recognition_model_path` | str | `/path/to/trocr/model/folder/` | Path to the TrOCR recognition model folder |
 | `--processor_path` | str | `/path/to/trocr/processor/folder/` | Path to the TrOCR processor folder |
 | `--input_folder` | str | **required** | Path to folder containing input images |
-| `--region_model_name` | str | `testi_koko_432px_bs4_gradaccum4_e90_lr-4_24_10_25` | Region detection model name |
-| `--line_model_name` | str | `testi_koko_432px_bs4_gradaccum4_e90_lr-4_24_10_25` | Line detection model name |
+| `--region_model_name` | str | `rfdetr_text_seg_model_202510` | Region detection model name |
+| `--line_model_name` | str | `rfdetr_text_seg_model_202510` | Line detection model name |
 | `--text_rec_model_name` | str | `202509_tf32` | Text recognition model name |
 | `--line_threshold` | int | 8 | Batch size for text recognition |
 | `--page_xml` | bool | False | Whether to save output as PAGE XML |

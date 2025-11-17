@@ -60,13 +60,13 @@ def parse_args():
     parser.add_argument(
         "--region_model_name",
         type=str,
-        default = 'testi_koko_432px_bs4_gradaccum4_e90_lr-4_24_10_25',
+        default = 'rfdetr_text_seg_model_202510',
         help="region model name"
     )
     parser.add_argument(
         "--line_model_name",
         type=str,
-        default = 'testi_koko_432px_bs4_gradaccum4_e90_lr-4_24_10_25',
+        default = 'rfdetr_text_seg_model_202510',
         help="line  model name"
     )
     parser.add_argument(
