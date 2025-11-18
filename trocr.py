@@ -51,7 +51,10 @@ def load_trocr_model(model_path, processor_path):
                                                do_resize=True, 
                                                size={'height': IMG_HEIGHT,'width': IMG_WIDTH})
      
-    model = VisionEncoderDecoderModel.from_pretrained(model_path).to(DEVICE)
+    model = VisionEncoderDecoderModel.from_pretrained(
+                                                    model_path,
+                                                    torch_dtype=torch.float16
+                                                ).to(DEVICE)
     
     return model, processor
 
@@ -133,7 +136,7 @@ def predict_text(cropped_lines, recognition_model, processor):
             - generated_text (list): Predicted text strings for each line.
     """
     pixel_values = processor(cropped_lines, return_tensors="pt").pixel_values
-    generated_dict = recognition_model.generate(pixel_values.to(DEVICE), max_new_tokens=128, return_dict_in_generate=True, output_scores=True)
+    generated_dict = recognition_model.generate(pixel_values.to(DEVICE, dtype=torch.float16), max_new_tokens=128, return_dict_in_generate=True, output_scores=True)
     generated_ids, lgscores = generated_dict['sequences'], generated_dict['sequences_scores']
     scores = get_scores(lgscores.tolist())
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)
