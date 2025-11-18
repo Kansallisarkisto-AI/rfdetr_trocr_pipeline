@@ -203,15 +203,15 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
             input_data = TextPreditionInput(image_path = image_path,
                                             line_threshold = args.line_threshold)
             text_predictions = get_text_predictions(input_data, ordered_lines, recognition_model, processor)
-        if text_predictions:
-            xml_input = XmlInput(image_path = image_path,
-                                page_xml = args.page_xml,
-                                alto_xml = args.alto_xml,
-                                xml_path = os.path.dirname(image_path) if not args.xml_folder else args.xml_folder,
-                                region_segment_model_name=args.region_model_name,
-                                line_segment_model_name=args.line_model_name,
-                                text_recognition_model_name=args.text_rec_model_name)
-            get_xml(text_predictions, xml_input)
+            if text_predictions:
+                xml_input = XmlInput(image_path = image_path,
+                                    page_xml = args.page_xml,
+                                    alto_xml = args.alto_xml,
+                                    xml_path = os.path.dirname(image_path) if not args.xml_folder else args.xml_folder,
+                                    region_segment_model_name=args.region_model_name,
+                                    line_segment_model_name=args.line_model_name,
+                                    text_recognition_model_name=args.text_rec_model_name)
+                get_xml(text_predictions, xml_input)
 
         
 def main(args):
