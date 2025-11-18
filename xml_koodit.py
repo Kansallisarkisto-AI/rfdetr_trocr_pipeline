@@ -17,15 +17,12 @@ class PageXML:
         polygon_str = ''
         for pair in polygon:
             polygon_str += '%s,%s '%(int(pair[0]), int(pair[1]))
-        return polygon_str
+        return polygon_str.rstrip()
 
     def create_xml(self, data, image_path): 
         attr_qname = etree.QName("http://www.w3.org/2001/XMLSchema-instance", "schemaLocation")
         root = etree.Element('PcGts',
-                            {attr_qname: 'http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15 http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15/pagecontent.xsd'},
-                            nsmap={None: 'http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15',
-                                    'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-                                    })
+                            nsmap={None: 'http://schema.primaresearch.org/PAGE/gts/pagecontent/2013-07-15'})
 
         # Metadata
         m = etree.SubElement(root, "Metadata")
@@ -38,39 +35,25 @@ class PageXML:
         lc = etree.SubElement(m,"LastChange")
         lc.text = now
 
-        #Root -> Page
+        # Root -> Page
         p = etree.SubElement(root, "Page")
+        p.set('imageFilename', data[0]['img_name'])
         p.set('imageWidth', str(data[0]['width']))
         p.set('imageHeight', str(data[0]['height']))
-        p.set('imageFilename', data[0]['img_name'])
-
-        #Page -> ReadingOrder
-        ro = etree.SubElement(p, "ReadingOrder")
-        #ReadingOrder -> OrderedGroup
-        og = etree.SubElement(ro, "OrderedGroup") 
-        og_id = 'ro'
-        og.set('id', og_id)
-        og.set('caption', "Regions reading order")
         
         # Loop over regions
         for i, region_dict in enumerate(data):
             region_id = 'r' + str(i)
             region_name = region_dict['region_name']
             region_polygon_coords = self.format_polygon(region_dict['region_coords'])
-            custom_region_tag = "readingOrder {index:%s;} structure {type:%s;}" %(str(i), region_name)
-
-            #OrderedGroup -> RegionRefIndexed
-            rri = etree.SubElement(og, "RegionRefIndexed")
-            rri.set('index', str(i))
-            rri.set('regionRef', region_id)
+            custom_region_tag = "readingOrder {index:%s;}" % str(i)
 
             # Page -> TextRegion
             tr = etree.SubElement(p, "TextRegion")
             tr.set('id', region_id)
-            tr.set('type', region_name)
             tr.set('custom', custom_region_tag)
             
-            #TextRegion -> CSoords
+            # TextRegion -> Coords
             region_coords = etree.SubElement(tr,"Coords")
             region_coords.set('points', region_polygon_coords)
             
@@ -81,22 +64,26 @@ class PageXML:
                 line_polygon_coords = self.format_polygon(line_dict['polygon'])
                 custom_line_tag = "readingOrder {index:%s;}" % str(j)
 
-                #TextRegion -> TextLine
+                # TextRegion -> TextLine
                 tl = etree.SubElement(tr, "TextLine")
                 tl.set('id', line_id)
                 tl.set('custom', custom_line_tag)
                 
-                #TextLine -> Coords
+                # TextLine -> Coords
                 line_coords = etree.SubElement(tl, "Coords")
                 line_coords.set('points', line_polygon_coords)
 
-                #TextLine -> TextEquiv
+                # Add Baseline element
+                baseline = etree.SubElement(tl, "Baseline")
+                baseline.set('points', '')
+
+                # TextLine -> TextEquiv
                 te = etree.SubElement(tl, "TextEquiv")
-                #TextEquiv -> Unicode
+                # TextEquiv -> Unicode
                 uc = etree.SubElement(te, "Unicode")
                 uc.text = line_text.strip()
                 
-            xml_doc = etree.ElementTree(root)
+        xml_doc = etree.ElementTree(root)
 
         return xml_doc
     
