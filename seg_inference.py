@@ -5,6 +5,7 @@ import cv2
 from shapely.validation import make_valid
 from shapely.geometry import Polygon
 from pydantic import BaseModel
+from collections import defaultdict
 
 class MergeInput(BaseModel):
     line_iou: int = 0.3
