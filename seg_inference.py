@@ -21,85 +21,110 @@ def validate_polygon(polygon):
         return None
 
 def merge_polygons(polygons, data):
-    """Merges polygons that have an IoU value above the given threshold.
+    """Merges overlapping polygons using connected components.
     
-    Merges polygons that have an Intersection over Union (IoU) value above a given threshold.
-
-    This function iterates through a list of polygons and merges any pairs that have sufficient
-    overlap based on either IoU or an absolute area overlap threshold. When multiple polygons
-    overlap with each other, they are all merged into a single polygon or multi-polygon.
-
     Args:
-        polygons (list): A list of polygon coordinate lists. Each polygon should be representable
-                        as a list of coordinates that can be validated and converted to a 
-                        Shapely polygon.
+        polygons (list): List of polygon coordinate arrays
         data (object): A configuration object containing merge threshold parameters:
                     - line_iou (float): The IoU threshold above which polygons are merged.
                     - line_overlap_threshold (float, optional): If provided, polygons are also
                         merged when their intersection area exceeds this fraction of the smaller
                         polygon's area.
-
-    Returns:
-        list: A list of polygon coordinate lists containing:
-            - All original polygons that were not merged (not dropped)
-            - New polygons resulting from merge operations
-            
-    Notes:
-        - Invalid polygons (those that fail validation) are skipped during comparison
-        - When merged polygons result in GeometryCollections or MultiPolygons, only the
-        Polygon components are extracted and added to the result
-        - The function uses a greedy merging approach where polygon i can merge with multiple
-        polygons j (where j > i), creating a single merged result
-    """
-    new_polygons = []
-    dropped = set()
-    all_merged_indeces = []
-    # Loops over all input polygons and merges them if the
-    # IoU value is over the given threshold
-    for i in range(0, len(polygons)):
-        poly1 = validate_polygon(polygons[i])
-        merged = None
-        merged_indeces = []
-        for j in range(i+1, len(polygons)):
-            poly2 = validate_polygon(polygons[j])
-            if poly1 and poly2: 
-                if poly1.intersects(poly2):
-                    overlap = False
-                    intersect = poly1.intersection(poly2)
-                    uni = poly1.union(poly2)
-                    # Calculates intersection over union
-                    iou = intersect.area / uni.area
-                    if data.line_overlap_threshold:
-                        overlap = intersect.area > (data.line_overlap_threshold * min(poly1.area, poly2.area))
-                    if (iou > data.line_iou) or overlap:
-                        if merged:
-                            # If there are multiple overlapping polygons
-                            # with IoU over the threshold, they are all merged together
-                            merged = uni.union(merged)
-                            dropped.add(j)
-                            merged_indeces.append(j)
-                        else:
-                            merged = uni
-                            # Polygons that are merged together are dropped from the list
-                            dropped.add(i)
-                            dropped.add(j)  
-                            merged_indeces += [i,j]
-        if merged:
-            all_merged_indeces.append(merged_indeces)
-            if merged.geom_type in ['GeometryCollection','MultiPolygon']:
-                for geom in merged.geoms:                
-                    if geom.geom_type == 'Polygon':
-                        new_polygons.append(np.array(geom.exterior.coords).astype(np.int32))
-            elif merged.geom_type == 'Polygon':
-                new_polygons.append(np.array(merged.exterior.coords).astype(np.int32))
-    res = [i for j, i in enumerate(polygons) if j not in dropped]
-    ret_indeces = [j for j, i in enumerate(polygons) if j not in dropped]
-    for indeces, new_polygon in zip(all_merged_indeces, new_polygons):
-        ret_indeces.append(indeces)
-        res.append(new_polygon)
         
-    return res, ret_indeces
-
+    Returns:
+        merged_polygons: List of polygon coordinate arrays
+        polygon_mapping: List where polygon_mapping[i] indicates which output 
+                         polygon the i-th input polygon was merged into (or i if unchanged)
+    """
+    n = len(polygons)
+    polygon_iou = data.line_iou
+    overlap_threshold = data.line_overlap_threshold
+    
+    if n == 0:
+        return [], []
+    
+    # Validate all polygons 
+    validated = [validate_polygon(p) for p in polygons]
+    
+    # Build adjacency graph of overlapping polygons
+    parent = list(range(n))  
+    
+    def find(x):
+        # Finds recursively the parent for polygon x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+    
+    def union(x, y):
+        # Updates parent list for merged polygons
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+    
+    # Check all pairs for overlap
+    for i in range(n):
+        poly1 = validated[i]
+        if not poly1:
+            continue
+            
+        for j in range(i + 1, n):
+            poly2 = validated[j]
+            if not poly2 or not poly1.intersects(poly2):
+                continue
+            # Calculate IoU
+            intersect = poly1.intersection(poly2)
+            union_geom = poly1.union(poly2)
+            iou = intersect.area / union_geom.area
+            
+            # Check merge criteria
+            should_merge = iou > polygon_iou
+            # If IoU threshold is not met, checks overlap threshold
+            if not should_merge and overlap_threshold:
+                overlap_ratio = intersect.area / min(poly1.area, poly2.area)
+                should_merge = overlap_ratio > overlap_threshold
+            # If merge criteria is fulfilled, parent list is updated
+            if should_merge:
+                union(i, j)
+    
+    # Group polygons by connected component
+    components = defaultdict(list)
+    for i in range(n):
+        if validated[i]: 
+            root = find(i)
+            components[root].append(i)
+    
+    # Merge each component
+    merged_polygons = []
+    polygon_mapping = [-1] * n  # Maps input index to output index
+    
+    for root, indices in components.items():
+        if len(indices) == 1:
+            # No merge needed
+            idx = indices[0]
+            merged_polygons.append(polygons[idx])
+            polygon_mapping[idx] = len(merged_polygons) - 1
+        else:
+            # Merge all polygons in component
+            merged = validated[indices[0]]
+            for idx in indices[1:]:
+                merged = merged.union(validated[idx])
+            
+            # Extract polygon(s) from result
+            output_idx = len(merged_polygons)
+            if merged.geom_type == 'Polygon':
+                merged_polygons.append(np.array(merged.exterior.coords).astype(np.int32))
+                for idx in indices:
+                    polygon_mapping[idx] = output_idx
+            elif merged.geom_type in ['MultiPolygon', 'GeometryCollection']:
+                # Split into separate polygons
+                for geom in merged.geoms:
+                    if geom.geom_type == 'Polygon':
+                        merged_polygons.append(np.array(geom.exterior.coords).astype(np.int32))
+                # All source polygons map to first output polygon of this component
+                for idx in indices:
+                    polygon_mapping[idx] = output_idx
+    
+    return merged_polygons, polygon_mapping
 
 def calculate_confidences(indices_list, confidence_values):
     """
@@ -245,9 +270,9 @@ def predict_polygons(model, image_path, max_size=768, confidence_threshold = 0.1
 
     # Merge lines that overlap too much
     merge_input = MergeInput()
-    merged_polygons, merged_indeces = merge_polygons(filtered_polygons, merge_input)
+    merged_polygons, merged_indices = merge_polygons(filtered_polygons, merge_input)
 
-    merged_confs = calculate_confidences(indices_list=merged_indeces, confidence_values=filtered_confs)
+    merged_confs = calculate_confidences(indices_list=merged_indices, confidence_values=filtered_confs)
     
     merged_line_max_mins = []
     for poly in merged_polygons:
