@@ -111,6 +111,43 @@ def parse_args():
         default=False,
         help="Whether to use new ordering for the lines"
     )
+    parser.add_argument(
+        "--line_percentage_threshold",
+        type=float,
+        default=7e-05,
+        help="Threshold value for filtering out small line polygons"
+    )
+    parser.add_argument(
+        "--region_percentage_threshold",
+        type=float,
+        default=7e-05,
+        help="Threshold value for filtering out small region polygons"
+    )
+    parser.add_argument(
+        "--line_iou",
+        type=float,
+        default=0.3,
+        help="Threshold value for merging overlapping lines"
+    )
+    parser.add_argument(
+        "--region_iou",
+        type=float,
+        default=0.3,
+        help="Threshold value for merging overlapping regions"
+    )
+    parser.add_argument(
+        "--line_overlap_threshold",
+        type=float,
+        default=0.5,
+        help="Threshold value for merging overlapping lines"
+    )
+    parser.add_argument(
+        "--region_overlap_threshold",
+        type=float,
+        default=0.5,
+        help="Threshold value for merging overlapping regions"
+    )
+        
     args = parser.parse_args()
     return args
 
@@ -184,10 +221,17 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
         Progress is displayed via tqdm progress bar during processing.
     """
     for image_path in tqdm(images, desc="Processing images", unit="image"):
-        line_polygons, line_confs, line_max_mins, region_polygons, region_confs, region_max_mins, image_shape = predict_polygons(detection_model, 
+        line_polygons, line_confs, line_max_mins, region_polygons, region_confs, region_max_mins, image_shape = predict_polygons(
+                                    detection_model, 
                                     image_path, 
                                     max_size=768, 
-                                    confidence_threshold = args.confidence_threshold) 
+                                    confidence_threshold = args.confidence_threshold,
+                                    line_percentage_threshold = args.line_percentage_threshold,
+                                    region_percentage_threshold = args.line_percentage_threshold,
+                                    line_iou = args.line_iou,
+                                    region_iou = args.region_iou,
+                                    line_overlap_threshold = args.line_overlap_threshold,
+                                    region_overlap_threshold = args.region_overlap_threshold) 
         line_preds = {'coords':line_polygons,
                       'max_min': line_max_mins,
                       'confs':line_confs
@@ -221,7 +265,7 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
 
         
 def main(args):
-    print("Loading rfdetr model model")
+    print("Loading rfdetr model")
     detection_model = load_rfdetr_model(args.detection_model_path)
     print('Loading TrOCR model')
     recognition_model, processor = load_trocr_model(args.recognition_model_path, args.processor_path)

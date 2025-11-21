@@ -4,12 +4,7 @@ import numpy as np
 import cv2
 from shapely.validation import make_valid
 from shapely.geometry import Polygon
-from pydantic import BaseModel
 from collections import defaultdict
-
-class MergeInput(BaseModel):
-    line_iou: int = 0.3
-    line_overlap_threshold: int = 0.5
 
 def validate_polygon(polygon):
     """"Function for testing and correcting the validity of polygons."""
@@ -21,26 +16,20 @@ def validate_polygon(polygon):
     else:
         return None
 
-def merge_polygons(polygons, data):
+def merge_polygons(polygons, polygon_iou, overlap_threshold):
     """Merges overlapping polygons using connected components.
     
     Args:
         polygons (list): List of polygon coordinate arrays
-        data (object): A configuration object containing merge threshold parameters:
-                    - line_iou (float): The IoU threshold above which polygons are merged.
-                    - line_overlap_threshold (float, optional): If provided, polygons are also
-                        merged when their intersection area exceeds this fraction of the smaller
-                        polygon's area.
+        polygon_iou (float): IoU threshold value for merge
+        overlap_threshold (float): Threshold value for polygon area overlap
         
     Returns:
         merged_polygons: List of polygon coordinate arrays
         polygon_mapping: List where polygon_mapping[i] indicates which output 
                          polygon the i-th input polygon was merged into (or i if unchanged)
     """
-    n = len(polygons)
-    polygon_iou = data.line_iou
-    overlap_threshold = data.line_overlap_threshold
-    
+    n = len(polygons)    
     if n == 0:
         return [], []
     
@@ -216,7 +205,65 @@ def load_rfdetr_model(model_path):
     model.optimize_for_inference()
     return model
 
-def predict_polygons(model, image_path, max_size=768, confidence_threshold = 0.15, percentage_threshold=7e-05):
+def process_polygons(poly_mask, poly_confs, image_shape, percentage_threshold, overlap_threshold, iou_threshold):
+    """
+    Get polygons from segmentation masks and merge overlapping polygons.
+
+    Args:
+        poly_masks: segmentation masks from model output
+        poly_confs: confidence values for polygon predictions
+        image_shape: image height and width
+        overlap_threshold: threshold value for polygon overlap 
+        iou_threshold: threshold value for polygon IoU
+
+    Returns:
+        merged_polygons: coordinates of merged and non-merged polygons
+        merged_confs: confidence values for merged and non-merged polygons
+        merged_max_mins: max-min values for merged and non-merged polygons
+        
+    """
+    all_polygons = []
+    new_confs = []
+    area_percentages = np.array([])
+    for mask, conf in zip(poly_mask, poly_confs):
+        # get polygons from mask. Upscales back to original shape
+        polygons, area_percentage = mask_to_polygon_cv2(mask=mask, original_shape=image_shape) #this can output multiple polygons from one mask
+        area_percentages = np.concatenate([area_percentages, area_percentage])
+        #take into account if there are multiple polygons inside one mask
+        all_polygons += (polygons)
+        new_confs += [conf] * len(polygons)
+
+    # Filter polygons by area percentages
+    filtered_polygons = []
+    filtered_confs = []
+
+    for idx in np.where(area_percentages > percentage_threshold)[0]:
+        filtered_polygons.append(all_polygons[idx])
+        filtered_confs.append(new_confs[idx])
+
+    # Merge polygons that overlap too much
+    merged_polygons, merged_indices = merge_polygons(filtered_polygons, iou_threshold, overlap_threshold)
+
+    merged_confs = calculate_confidences(indices_list=merged_indices, confidence_values=filtered_confs)
+    
+    merged_max_mins = []
+    for poly in merged_polygons:
+        xmax, ymax = np.max(poly,axis=0)
+        xmin, ymin = np.min(poly,axis=0)
+        merged_max_mins.append((xmin,ymin,xmax,ymax))
+
+    return merged_polygons, merged_confs, merged_max_mins
+
+def predict_polygons(model, 
+                     image_path, 
+                     max_size=768, 
+                     confidence_threshold = 0.15, 
+                     line_percentage_threshold=7e-05,
+                     region_percentage_threshold=7e-05,
+                     line_iou=0.3,
+                     region_iou=0.3,
+                     line_overlap_threshold=0.5,
+                     region_overlap_threshold=0.5):
     """
     Predict and extract line and region polygons from an image using a segmentation model.
 
@@ -225,6 +272,12 @@ def predict_polygons(model, image_path, max_size=768, confidence_threshold = 0.1
         image_path: Path to the input image file.
         max_size: Maximum dimension size for image preprocessing. Default is 768.
         confidence_threshold: Minimum confidence score for detections. Default is 0.15.
+        line_percentage_threshold: Threshold value for filtering out small line polygons
+        region_percentage_threshold: Threshold value for filtering out small region polygons
+        line_iou: Threshold value for merging overlapping lines based on IoU
+        region_iou: Threshold value for merging overlapping regions based on IoU
+        line_overlap_threshold: Threshold value for merging overlapping lines based on overlap
+        region_overlap_threshold: Threshold value for merging overlapping regions based on overlap
 
     Returns:
         tuple: A 7-element tuple containing:
@@ -251,49 +304,20 @@ def predict_polygons(model, image_path, max_size=768, confidence_threshold = 0.1
     region_confs = detections.confidence[detections.class_id == 1]
 
     image_shape = (image.shape[0], image.shape[1])
-    line_polygons = []
-    new_line_confs = []
-    area_percentages = np.array([])
-    for mask, conf in zip(line_mask, line_confs):
-        # get polygons from mask. Upscales back to original shape
-        polygons, area_percentage = mask_to_polygon_cv2(mask=mask, original_shape=image_shape) #this can output multiple polygons from one mask
-        area_percentages = np.concatenate([area_percentages, area_percentage])
-        #take into account if there are multiple polygons inside one mask
-        line_polygons += (polygons)
-        new_line_confs += [conf] * len(polygons)
+                         
+    # Post-processing for line and region segmentation results
+    merged_line_polygons, merged_line_confs, merged_line_max_mins = process_polygons(line_mask, 
+                                                                                     line_confs, 
+                                                                                     image_shape, 
+                                                                                     line_percentage_threshold, 
+                                                                                     line_overlap_threshold, 
+                                                                                     line_iou)
 
-    # Filter lines by area percentages
-    filtered_polygons = []
-    filtered_confs = []
-    for idx in np.where(area_percentages>percentage_threshold)[0]:
-        filtered_polygons.append(line_polygons[idx])
-        filtered_confs.append(new_line_confs[idx])
-
-    # Merge lines that overlap too much
-    merge_input = MergeInput()
-    merged_polygons, merged_indices = merge_polygons(filtered_polygons, merge_input)
-
-    merged_confs = calculate_confidences(indices_list=merged_indices, confidence_values=filtered_confs)
-    
-    merged_line_max_mins = []
-    for poly in merged_polygons:
-        xmax, ymax = np.max(poly,axis=0)
-        xmin, ymin = np.min(poly,axis=0)
-        merged_line_max_mins.append((xmin,ymin,xmax,ymax))
-    
-    # transform region masks to polygons
-    region_polygons = []
-    region_max_mins = []
-    new_region_confs = []
-    for mask, conf in zip(region_mask, region_confs):
-        # get polygons from mask. Upscales back to original shape
-        polygons, _ = mask_to_polygon_cv2(mask=mask, original_shape=image_shape) #this can output multiple polygons from one mask
-        #take into account if there are multiple polygons inside one mask
-        region_polygons += (polygons)
-        new_region_confs += [conf] * len(polygons)
-        #calculate maxmins
-        for polygon in polygons:
-            xmax, ymax = np.max(polygon,axis=0)
-            xmin, ymin = np.min(polygon,axis=0)
-            region_max_mins.append((xmin,ymin,xmax,ymax))
-    return merged_polygons, merged_confs, merged_line_max_mins, region_polygons, new_region_confs, region_max_mins, image_shape
+    merged_region_polygons, merged_region_confs, merged_region_max_mins = process_polygons(region_mask, 
+                                                                                           region_confs, 
+                                                                                           image_shape, 
+                                                                                           region_percentage_threshold, 
+                                                                                           region_overlap_threshold, 
+                                                                                           region_iou)
+                         
+    return merged_line_polygons, merged_line_confs, merged_line_max_mins, merged_region_polygons, merged_region_confs, merged_region_max_mins, image_shape
