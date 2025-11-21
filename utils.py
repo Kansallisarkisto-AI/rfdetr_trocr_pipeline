@@ -176,7 +176,10 @@ def order_regions_lines(lines, regions, new_order = False):
         if line_polygons:
             # If one or more lines are connected to a region, line order inside the region is defined
             # and the predicted text lines are joined in the same python dict
-            line_order = order_poly.order(line_max_mins)
+            if new_order:
+                line_order = graph_order_poly.order(line_max_mins)
+            else:
+                line_order = order_poly.order(line_max_mins)
             line_polygons = [line_polygons[i] for i in line_order]
             line_confs = [line_confs[i] for i in line_order]
             new_region = {'region_coords': region['coords'], 
