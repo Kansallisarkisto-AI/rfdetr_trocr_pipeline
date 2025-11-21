@@ -105,6 +105,12 @@ def parse_args():
         default=0.15,
         help="Detection confidence threshold"
     )
+    parser.add_argument(
+        "--new_ordering",
+        type=bool,
+        default=False,
+        help="Whether to use new ordering for the lines"
+    )
     args = parser.parse_args()
     return args
 
@@ -198,7 +204,7 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
         else:
             region_preds = get_default_region(image_shape=image_shape)
         lines_connected_to_regions = get_line_regions(lines=line_preds, regions=region_preds)
-        ordered_lines = order_regions_lines(lines=lines_connected_to_regions, regions=region_preds)
+        ordered_lines = order_regions_lines(lines=lines_connected_to_regions, regions=region_preds, new_order = args.new_ordering)
         if ordered_lines:
             input_data = TextPreditionInput(image_path = image_path,
                                             line_threshold = args.line_threshold)
