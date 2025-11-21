@@ -147,5 +147,14 @@ class GraphBasedOrdering:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
+
+        # Check if all nodes were processed
+        if len(result) < n:
+            # Fallback: add remaining nodes sorted by position
+            missing = set(range(n)) - set(result)
+            missing_sorted = sorted(missing, 
+                                  key=lambda i: (features[i]['center'][1], 
+                                               features[i]['center'][0]))
+            result.extend(missing_sorted)
         
         return result
