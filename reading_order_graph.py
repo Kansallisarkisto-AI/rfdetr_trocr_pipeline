@@ -35,6 +35,7 @@ class GraphBasedOrdering:
 
         return {
             'center': ((x_min + x_max) / 2, (y_min + y_max) / 2),
+            'anchor': (x_min, y_min), # use top left corner as anchor
             'x_min': x_min, 
             'x_max': x_max,
             'y_min': y_min, 
@@ -61,8 +62,8 @@ class GraphBasedOrdering:
             bool: True if line u should come before line v in reading order
                   False otherwise
         """
-        u_center = u_feat['center']
-        v_center = v_feat['center']
+        u_anchor = u_feat['anchor']
+        v_anchor = v_feat['anchor']
         
         # Vertical overlap threshold
         v_overlap = min(u_feat['y_max'], v_feat['y_max']) - max(u_feat['y_min'], v_feat['y_min'])
@@ -71,12 +72,12 @@ class GraphBasedOrdering:
         # If significant vertical overlap, use horizontal order
         if v_overlap > 0.5 * avg_height:
             if self.text_direction == 'lr':
-                return u_center[0] < v_center[0]
+                return u_anchor[0] < v_anchor[0]
             else:
-                return u_center[0] > v_center[0]
+                return u_anchor[0] > v_anchor[0]
         
         # Otherwise, use vertical order (top to bottom)
-        return u_center[1] < v_center[1]
+        return u_anchor[1] < v_anchor[1]
     
     def order(self, lines):
         """
@@ -139,22 +140,27 @@ class GraphBasedOrdering:
         queue = deque([i for i in range(n) if in_degree[i] == 0])
         result = []
         
-        while queue:
-            node = queue.popleft()
+        while queue or len(result) < n:
+            # check special case requiring cycle break: queue empty but all nodes haven't been processed yet
+            if not queue:
+                # cycle-break: force-pick the next most plausible node, sorted by x and y
+                remaining = set(range(n)) - set(result)
+                node = min(
+                    remaining,
+                    key=lambda i: (
+                        features[i]['anchor'][1],
+                        features[i]['anchor'][0] if self.text_direction == 'lr' else -features[i]['anchor'][0]
+                    )
+                )
+            else:
+                # regular case
+                node = queue.popleft()
+            
             result.append(node)
             
             for neighbor in graph[node]:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
-
-        # Check if all nodes were processed
-        if len(result) < n:
-            # Fallback: add remaining nodes sorted by position
-            missing = set(range(n)) - set(result)
-            missing_sorted = sorted(missing, 
-                                  key=lambda i: (features[i]['center'][1], 
-                                               features[i]['center'][0]))
-            result.extend(missing_sorted)
         
         return result
