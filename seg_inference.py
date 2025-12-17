@@ -5,14 +5,15 @@ import numpy as np
 import cv2
 from shapely.validation import make_valid
 from shapely.geometry import Polygon, LineString
+from shapely.prepared import prep
 from collections import defaultdict
 import torch
 from PIL import Image
 from supervision.detection.utils.iou_and_nms import OverlapFilter, OverlapMetric
 from inference_slicer_modified import InferenceSlicer
 
-def poly_features(poly_coords, step=0.25):
-    """Calculates approximate polygon mean thickness by intersecting a grid with the polygon.
+def poly_features(poly_coords, step=1.0, fast_mode=True):
+    """Calculates approximate polygon mean thickness using the bounding box if fast_mode=True, or by intersecting a grid with the polygon if fast_mode=False.
 
     Args:
         poly_coords (array-like): Sequence of (x, y) coordinate pairs defining
@@ -25,40 +26,49 @@ def poly_features(poly_coords, step=0.25):
             - "thickness" (float): Estimated mean polygon thickness.
         Returns None if the polygon is empty or has zero area.
     """
+
     g = Polygon(poly_coords)
-    if g.is_empty or g.area <= 0:
+
+    if g.is_empty:
         return None
 
     minx, miny, maxx, maxy = g.bounds
-    pad = step * 2
 
-    def total_len(geom):
-        t = geom.geom_type
-        if t == "LineString": return geom.length
-        if t == "MultiLineString": return sum(x.length for x in geom.geoms)
-        if t == "GeometryCollection":
-            return sum(x.length for x in geom.geoms if x.geom_type in ("LineString", "MultiLineString"))
-        return 0.0  # points etc.
+    if fast_mode:
+        ax = maxx - minx
+        ay = maxy - miny
+    else:
+        pad = step * 2
 
-    xs = np.arange(np.floor(minx/step)*step + 0.5*step, np.ceil(maxx/step)*step, step)
-    ys = np.arange(np.floor(miny/step)*step + 0.5*step, np.ceil(maxy/step)*step, step)
+        def total_len(geom):
+            t = geom.geom_type
+            if t == "LineString": return geom.length
+            if t == "MultiLineString": return sum(x.length for x in geom.geoms)
+            if t == "GeometryCollection":
+                return sum(x.length for x in geom.geoms if x.geom_type in ("LineString", "MultiLineString"))
+            return 0.0  # points etc.
 
-    vx = []
-    for x in xs:
-        try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
-            vx.append(total_len(g.intersection(LineString([(x, miny-pad), (x, maxy+pad)]))))
-        except:
-            vx.append(0.0)
-    
-    hy = []
-    for y in ys:
-        try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
-            hy.append(total_len(g.intersection(LineString([(minx-pad, y), (maxx+pad, y)]))))
-        except:
-            hy.append(0.0)
+        xs = np.arange(np.floor(minx/step)*step + 0.5*step, np.ceil(maxx/step)*step, step)
+        ys = np.arange(np.floor(miny/step)*step + 0.5*step, np.ceil(maxy/step)*step, step)
 
-    ax = float(np.mean([v for v in vx if v > 0])) if np.any(np.array(vx) > 0) else 0.0
-    ay = float(np.mean([v for v in hy if v > 0])) if np.any(np.array(hy) > 0) else 0.0
+        g = prep(g)  # prepare geometry for faster intersection calculations
+
+        vx = []
+        for x in xs:
+            try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
+                vx.append(total_len(g.intersection(LineString([(x, miny-pad), (x, maxy+pad)]))))
+            except:
+                vx.append(0.0)
+        
+        hy = []
+        for y in ys:
+            try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
+                hy.append(total_len(g.intersection(LineString([(minx-pad, y), (maxx+pad, y)]))))
+            except:
+                hy.append(0.0)
+
+        ax = float(np.mean([v for v in vx if v > 0])) if np.any(np.array(vx) > 0) else 0.0
+        ay = float(np.mean([v for v in hy if v > 0])) if np.any(np.array(hy) > 0) else 0.0
 
     return {"thickness": min(ax, ay)}
 
@@ -128,7 +138,7 @@ def iou_x(A, B):
     IoU of two polygons along X, based on their bounding boxes.
     """
 
-    if not A or not B or A.is_empty or B.is_empty or A.area == 0 or B.area == 0:
+    if not A or not B or A.is_empty or B.is_empty:
         return 0.5
 
     ax_min, ay_min, ax_max, ay_max = A.bounds
@@ -144,7 +154,7 @@ def iou_y(A, B):
     IoU of two polygons along Y, based on their bounding boxes.
     """
 
-    if not A or not B or A.is_empty or B.is_empty or A.area == 0 or B.area == 0:
+    if not A or not B or A.is_empty or B.is_empty:
         return 0.5
 
     ax_min, ay_min, ax_max, ay_max = A.bounds
