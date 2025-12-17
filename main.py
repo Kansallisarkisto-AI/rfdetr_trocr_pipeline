@@ -229,7 +229,6 @@ def get_text_predictions(input_data, segment_predictions, recognition_model, pro
     else:
         return None
 
-
 def process_all_images(images, detection_model, recognition_model, processor, args, rank=0):
     """
     Process a collection of images through detection, recognition, and XML output pipeline.
@@ -284,7 +283,8 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
                                     tile_overlap = args.tile_overlap,
                                     tile_iou_threshold = args.tile_iou_threshold,
                                     tile_batch_size=args.tile_batch_size)
-        tqdm.write(f"predict_polygons took {time.time() - start_time} seconds.")
+        
+        predict_polygons_time = time.time() - start_time
 
         start_time = time.time()
         line_preds = {'coords':line_polygons,
@@ -318,8 +318,8 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
                                     text_recognition_model_name=args.text_rec_model_name)
                 get_xml(text_predictions, xml_input)
         
-        tqdm.write(f"get_text_predictions took {time.time() - start_time} seconds.")
-
+        get_text_predictions_time = time.time() - start_time
+        bar.set_postfix_str(f"  predict_polygons: {predict_polygons_time:.2f} s, get_text_predictions: {get_text_predictions_time:.2f} s")
         
 def main(args):
     print("Loading rfdetr model")
