@@ -404,8 +404,8 @@ def process_polygons(poly_mask, poly_confs, image_shape, percentage_threshold, o
 
     merged_confs = calculate_confidences(indices_list=merged_indices, confidence_values=filtered_confs)
 
-    # If we have enough data and are processing text lines (use_verticality), drop polygons that are too thin (slivers)
-    if len(merged_polygons) > 5 and use_verticality:
+    # drop polygons that are too thin (slivers)
+    if use_verticality:
         merged_polygons, merged_confs = filter_slivers(
             merged_polygons, confs=merged_confs, threshold=0.01*min(image_shape[0], image_shape[1]),
         )
