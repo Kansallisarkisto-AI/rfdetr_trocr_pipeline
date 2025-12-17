@@ -43,8 +43,19 @@ def poly_features(poly_coords, step=0.25):
     xs = np.arange(np.floor(minx/step)*step + 0.5*step, np.ceil(maxx/step)*step, step)
     ys = np.arange(np.floor(miny/step)*step + 0.5*step, np.ceil(maxy/step)*step, step)
 
-    vx = [total_len(g.intersection(LineString([(x, miny-pad), (x, maxy+pad)]))) for x in xs]
-    hy = [total_len(g.intersection(LineString([(minx-pad, y), (maxx+pad, y)]))) for y in ys]
+    vx = []
+    for x in xs:
+        try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
+            vx.append(total_len(g.intersection(LineString([(x, miny-pad), (x, maxy+pad)]))))
+        except:
+            vx.append(0.0)
+    
+    hy = []
+    for y in ys:
+        try:  # this can fail if the intersection is undefined for some reason, in that case we say the length is 0.0 (no intersection)
+            hy.append(total_len(g.intersection(LineString([(minx-pad, y), (maxx+pad, y)]))))
+        except:
+            hy.append(0.0)
 
     ax = float(np.mean([v for v in vx if v > 0])) if np.any(np.array(vx) > 0) else 0.0
     ay = float(np.mean([v for v in hy if v > 0])) if np.any(np.array(hy) > 0) else 0.0
@@ -89,6 +100,8 @@ def filter_slivers(polygons, confs=None, threshold = 10.0):
 
     keep_idxs = []
     for f in feats:
+        if f is None:
+            continue
         sliver = f["thickness"] <= th_lo
 
         if not sliver:
