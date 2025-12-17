@@ -20,6 +20,9 @@ def poly_features(poly_coords, step=1.0, fast_mode=True):
                                   the polygon exterior.
         step (float): Spacing between sampling lines in both x and y directions.
                       Smaller values increase accuracy but also computation time.
+        fast_mode (bool): If True, use a fast bounding-box-based approximation.
+            If False, use a more accurate but slower grid–polygon intersection
+            method.
 
     Returns:
         dict or None: Dictionary with key:
@@ -50,8 +53,6 @@ def poly_features(poly_coords, step=1.0, fast_mode=True):
 
         xs = np.arange(np.floor(minx/step)*step + 0.5*step, np.ceil(maxx/step)*step, step)
         ys = np.arange(np.floor(miny/step)*step + 0.5*step, np.ceil(maxy/step)*step, step)
-
-        g = prep(g)  # prepare geometry for faster intersection calculations
 
         vx = []
         for x in xs:
