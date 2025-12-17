@@ -11,7 +11,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_HEIGHT = 192
 IMG_WIDTH = 1024
 
-def load_trocr_model(model_path, processor_path):
+def load_trocr_model(model_path, processor_path, device=None):
     """Load a TrOCR model with custom image size support.
     
     Load a TrOCR model with custom image size support and positional encoding interpolation.
@@ -28,6 +28,9 @@ def load_trocr_model(model_path, processor_path):
             - processor (TrOCRProcessor): Configured image processor with custom dimensions.
             - model (VisionEncoderDecoderModel): Loaded TrOCR model on the specified device.
     """
+    global DEVICE  # ugly, but necessary until we refactor this into a class
+    if device:
+        DEVICE = device
     # Store original
     original_embeddings_forward = ViTEmbeddings.forward
     

@@ -7,6 +7,9 @@ from pydantic import BaseModel
 from xml_koodit import get_xml
 from pathlib import Path
 import os
+import time
+import torch
+import torch.multiprocessing as mp
 
 
 class TextPreditionInput(BaseModel):
@@ -147,6 +150,42 @@ def parse_args():
         default=0.5,
         help="Threshold value for merging overlapping regions"
     )
+    parser.add_argument(
+        "--tile_size",
+        type=int,
+        default=0,
+        help="Tile size for Slicing Aided Hyper Inference (SAHI), in pixels. 384 is usually a good value for RF-DETR segmentation models. 0 to disable."
+    )
+    parser.add_argument(
+        "--tile_overlap",
+        type=int,
+        default=128,
+        help="Tile overlap for SAHI, in pixels."
+    )
+    parser.add_argument(
+        "--tiles_across",
+        type=int,
+        default=2,
+        help="The number of SAHI tiles across the shorter dimension of the image."
+    )
+    parser.add_argument(
+        "--tile_iou_threshold",
+        type=float,
+        default=0.85,
+        help="IoU threshold for suppressing overlapping detections _when SAHI is used_. 0.85 for general material, 0.5 is sometimes better for tables."
+    )
+    parser.add_argument(
+        "--tile_batch_size",
+        type=int,
+        default=6,
+        help="Batch size for SAHI. 6 is a reasonable value."
+    )
+    parser.add_argument(
+        "--multi_gpu",
+        type=bool,
+        default=False,
+        help="Whether to use all GPUs on system instead of just the first one. Requires a patched version of the RF-DETR library that accepts a device argument with the rank specified."
+    )
         
     args = parser.parse_args()
     return args
@@ -191,7 +230,7 @@ def get_text_predictions(input_data, segment_predictions, recognition_model, pro
         return None
 
 
-def process_all_images(images, detection_model, recognition_model, processor, args):
+def process_all_images(images, detection_model, recognition_model, processor, args, rank=0):
     """
     Process a collection of images through detection, recognition, and XML output pipeline.
 
@@ -220,23 +259,39 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
     Note:
         Progress is displayed via tqdm progress bar during processing.
     """
-    for image_path in tqdm(images, desc="Processing images", unit="image"):
+    bar = tqdm(
+        images,
+        desc=f"GPU {rank}",
+        position=rank,
+        leave=True,
+        dynamic_ncols=True,
+    )
+
+    for image_path in bar:
+        start_time = time.time()
         line_polygons, line_confs, line_max_mins, region_polygons, region_confs, region_max_mins, image_shape = predict_polygons(
                                     detection_model, 
                                     image_path, 
-                                    max_size=768, 
+                                    max_size = args.tile_size * args.tiles_across - args.tile_overlap if args.tile_size else 768, 
                                     confidence_threshold = args.confidence_threshold,
                                     line_percentage_threshold = args.line_percentage_threshold,
-                                    region_percentage_threshold = args.line_percentage_threshold,
+                                    region_percentage_threshold = args.region_percentage_threshold,
                                     line_iou = args.line_iou,
                                     region_iou = args.region_iou,
                                     line_overlap_threshold = args.line_overlap_threshold,
-                                    region_overlap_threshold = args.region_overlap_threshold) 
+                                    region_overlap_threshold = args.region_overlap_threshold,
+                                    tile_size = args.tile_size,
+                                    tile_overlap = args.tile_overlap,
+                                    tile_iou_threshold = args.tile_iou_threshold,
+                                    tile_batch_size=args.tile_batch_size)
+        tqdm.write(f"predict_polygons took {time.time() - start_time} seconds.")
+
+        start_time = time.time()
         line_preds = {'coords':line_polygons,
                       'max_min': line_max_mins,
                       'confs':line_confs
                       }
-        if len (region_polygons)>0:
+        if len (region_polygons) > 0:
             region_preds = []
             for num, (region_polygon, region_conf, region_max_min) in enumerate(zip(region_polygons, region_confs, region_max_mins)):
                 region_preds.append({'coords': region_polygon,
@@ -262,11 +317,13 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
                                     line_segment_model_name=args.line_model_name,
                                     text_recognition_model_name=args.text_rec_model_name)
                 get_xml(text_predictions, xml_input)
+        
+        tqdm.write(f"get_text_predictions took {time.time() - start_time} seconds.")
 
         
 def main(args):
     print("Loading rfdetr model")
-    detection_model = load_rfdetr_model(args.detection_model_path)
+    detection_model = load_rfdetr_model(args.detection_model_path, batch_size=args.tile_batch_size if args.tile_size else 1)
     print('Loading TrOCR model')
     recognition_model, processor = load_trocr_model(args.recognition_model_path, args.processor_path)
 
@@ -278,7 +335,37 @@ def main(args):
     process_all_images(images, detection_model, recognition_model, processor, args)
     print('Processing Finished')
 
+def worker(rank, world_size, args):
+    # Pin this process to one GPU
+    torch.cuda.set_device(rank)
+    device_string = f"cuda:{rank}"
+    #device = torch.device(f"cuda:{rank}")
+
+    print(f"[GPU {rank}] loading models...")
+    detection_model = load_rfdetr_model(args.detection_model_path, device=device_string, batch_size=args.tile_batch_size if args.tile_size else 1)
+    recognition_model, processor = load_trocr_model(args.recognition_model_path, args.processor_path, device=device_string)
+
+    images = load_image_paths(args.input_folder)
+
+    # select the range of images for this worker, images are split across world_size workers
+    my_images = images[rank::world_size]
+    print(f"[GPU {rank}] got {len(my_images)} images")
+
+    process_all_images(my_images, detection_model, recognition_model, processor, args, rank=rank)
+
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args)
+
+    if args.multi_gpu:
+        ngpu = torch.cuda.device_count()
+        print(f"{ngpu} GPUs detected")
+    else:
+        ngpu = 1
+        print("Using only first GPU.")
+    
+    if ngpu <= 1:
+        main(args)
+    else:
+        mp.set_start_method("spawn", force=True)  # important for CUDA
+        mp.spawn(worker, args=(ngpu, args), nprocs=ngpu, join=True)
