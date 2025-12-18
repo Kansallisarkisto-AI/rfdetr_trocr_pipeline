@@ -10,7 +10,7 @@ class PageXML:
     def save_page(self, xml_file, path):
         """Saves Page xml file."""
         xml_file.write(path, xml_declaration=True, encoding='utf-8', method="xml")
-        print('Page XML file saved to ', path)
+        #print('Page XML file saved to ', path)
 
     def format_polygon(self, polygon):
         """Formats polygon from a list of lists into a string."""
@@ -102,7 +102,7 @@ class AltoXML:
         """Saves Alto xml file."""
         with open(path,"w") as f: 
             f.write(indent(str(newsoup))) 
-        print('XML file saved to ', path)
+        #print('XML file saved to ', path)
 
     def format_polygon(self, polygon):
         """Formats polygon from a list of lists into a string."""

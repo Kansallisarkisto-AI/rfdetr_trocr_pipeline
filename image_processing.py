@@ -20,6 +20,56 @@ def load_with_torchvision(img_path):
     img_np = img_tensor.permute(1, 2, 0).numpy()
     return img_np
 
+def preprocess_resize_smallerof_wh_torch_transform(image, max_size=1024, normalize=True):
+    """
+    Resize so that the *smaller* of (width, height) is at most max_size.
+    The larger dimension is allowed to grow arbitrarily.
+
+    Args:
+        image: torch.Tensor (C, H, W) or PIL Image
+        max_size: maximum size for the *smaller* dimension
+        normalize: whether to normalize to [0, 1] range
+
+    Returns:
+        torch.Tensor (C, H, W) or PIL Image (same type as input)
+    """
+    # Convert numpy -> torch
+    if isinstance(image, np.ndarray):
+        image = torch.from_numpy(image)
+        if image.ndim == 3 and image.shape[2] in [1, 3]:
+            image = image.permute(2, 0, 1)
+
+    # Extract H, W
+    if isinstance(image, torch.Tensor):
+        _, h, w = image.shape
+    else:  # PIL
+        w, h = image.size
+
+    min_dim = min(h, w)
+    transform_list = []
+
+    # Resize ONLY if the *smaller* dimension is too large
+    if min_dim > max_size:
+        scale = max_size / min_dim
+        new_h = int(round(h * scale))
+        new_w = int(round(w * scale))
+        transform_list.append(
+            transforms_v2.Resize(size=[new_h, new_w], antialias=True)
+        )
+
+    # Normalize
+    if normalize:
+        transform_list.append(transforms_v2.ToDtype(torch.float32, scale=True))
+
+    # Apply transforms
+    if transform_list:
+        transform = transforms_v2.Compose(transform_list)
+        resized = transform(image)
+    else:
+        resized = image
+
+    return resized
+
 def preprocess_resize_torch_transform(image, max_size=1024, normalize=True):
     """
     Resize using torchvision.transforms.v2 (most concise, PyTorch only).
@@ -33,7 +83,6 @@ def preprocess_resize_torch_transform(image, max_size=1024, normalize=True):
         torch.Tensor (C, H, W) or PIL Image (same type as input)
     """
     # Convert to tensor if numpy
-    input_type = type(image)
     if isinstance(image, np.ndarray):
         image = torch.from_numpy(image)
         if image.ndim == 3 and image.shape[2] in [1, 3]:
