@@ -1,11 +1,9 @@
 import glob
 import os
 from shapely.geometry import Polygon
-from reading_order import OrderPolygons
 from shapely.validation import make_valid
 from reading_order_graph import GraphBasedOrdering
 graph_order_poly = GraphBasedOrdering()
-order_poly = OrderPolygons()
 
 def load_image_paths(input_folder, extensions=None):
     """
@@ -130,7 +128,7 @@ def get_line_regions(lines, regions):
         lines_list.append(new_line)
     return lines_list
 
-def order_regions_lines(lines, regions, new_order = False):
+def order_regions_lines(lines, regions):
     """Function for ordering line predictions inside each region.
     
     Docstring generated with Claude
@@ -176,10 +174,7 @@ def order_regions_lines(lines, regions, new_order = False):
         if line_polygons:
             # If one or more lines are connected to a region, line order inside the region is defined
             # and the predicted text lines are joined in the same python dict
-            if new_order:
-                line_order = graph_order_poly.order(line_max_mins)
-            else:
-                line_order = order_poly.order(line_max_mins)
+            line_order = graph_order_poly.order(line_max_mins)
             line_polygons = [line_polygons[i] for i in line_order]
             line_confs = [line_confs[i] for i in line_order]
             new_region = {'region_coords': region['coords'], 
@@ -193,10 +188,7 @@ def order_regions_lines(lines, regions, new_order = False):
         else:
             continue
     # Creates an ordering of the detected regions based on their polygon coordinates
-    if new_order:
-        region_order = graph_order_poly.order(region_max_mins)
-    else:
-        region_order = order_poly.order(region_max_mins)
+    region_order = graph_order_poly.order(region_max_mins)
     regions_with_rows = [regions_with_rows[i] for i in region_order]
     return regions_with_rows
 
