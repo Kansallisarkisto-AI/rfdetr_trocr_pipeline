@@ -1,4 +1,4 @@
-from image_processing import load_with_torchvision
+from .image_processing import load_with_torchvision
 import numpy as np
 import cv2
 import math
@@ -10,6 +10,13 @@ from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_HEIGHT = 192
 IMG_WIDTH = 1024
+
+class TrOCRProcessorCustom(TrOCRProcessor):
+    def __init__(self, image_processor, tokenizer):
+        self.image_processor = image_processor
+        self.tokenizer = tokenizer
+        self.current_processor = self.image_processor
+        self.chat_template = None
 
 def load_trocr_model(model_path, processor_path, device=None):
     """Load a TrOCR model with custom image size support.
@@ -49,15 +56,22 @@ def load_trocr_model(model_path, processor_path, device=None):
     ViTEmbeddings.forward = universal_embeddings_forward
     
     # Load model and processor
-    processor = TrOCRProcessor.from_pretrained(processor_path,
-                                               use_fast=True,
-                                               do_resize=True, 
-                                               size={'height': IMG_HEIGHT,'width': IMG_WIDTH})
-     
-    model = VisionEncoderDecoderModel.from_pretrained(
-                                                    model_path,
-                                                    torch_dtype=torch.float16
-                                                ).to(DEVICE)
+    if "onnx" in model_path.lower():
+        from optimum.onnxruntime import ORTModelForVision2Seq
+        model = ORTModelForVision2Seq.from_pretrained(model_path, provider="ROCMExecutionProvider", use_cache=False, use_merged=False).to(DEVICE)
+    else:
+        model = VisionEncoderDecoderModel.from_pretrained(
+                                                        model_path,
+                                                        torch_dtype=torch.float16
+                                                    ).to(DEVICE)
+
+    if model.config.encoder.model_type == "dinov2":
+        processor = TrOCRProcessorCustom.from_pretrained(processor_path)
+    else:
+        processor = TrOCRProcessor.from_pretrained(processor_path,
+                                                use_fast=True,
+                                                do_resize=True, 
+                                                size={'height': IMG_HEIGHT,'width': IMG_WIDTH})
     
     return model, processor
 

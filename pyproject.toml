@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "rfdetr-trocr-pipeline"
+name = "nafhtr"
 version = "0.1.0"
-description = "Add your description here"
+description = "An HTR pipeline for historical text recognition. The text lines are detected using RF-DETR model and the text is detected using a vision encoder-decoder model."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,10 +17,33 @@ dependencies = [
     "opencv-python-headless>=4.8.1.78",
     "pillow>=9.5.0",
     "pydantic>=2.6.1",
-    "rfdetr>=1.3.0",
+    "rfdetr>=1.6.4",
     "shapely>=2.0.6",
     "torch>=2.4.0",
-    "transformers==4.55.0",
+    "transformers>=5.1.0",
     "yattag>=1.16.1",
-    "supervision==0.27.0",
+    "supervision>=0.27.0",
 ]
+authors = [
+  {name = "Mikko Lipsanen", email = "mikko.lipsanen@kansallisarkisto.fi"},
+  {name = "Atte Föhr", email = "atte.fohr@kansallisarkisto.fi"},
+  {name = "John Mäkelä", email = "john.makela@kansallisarkisto.fi"},
+]
+maintainers = [
+  {name = "Mikko Lipsanen", email = "mikko.lipsanen@kansallisarkisto.fi"},
+  {name = "Atte Föhr", email = "atte.fohr@kansallisarkisto.fi"},
+  {name = "John Mäkelä", email = "john.makela@kansallisarkisto.fi"}
+]
+license = "Apache-2.0"
+license-files = ["LICEN[CS]E.*"]
+keywords = ["document understanding", "handwriting recognition", "ocr", "htr"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+
+[project.urls]
+Homepage = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
+Documentation = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
+Repository = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
+"Bug Tracker" = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline/issues"
