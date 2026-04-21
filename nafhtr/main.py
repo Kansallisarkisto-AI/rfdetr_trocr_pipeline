@@ -298,6 +298,7 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
             region_preds = get_default_region(image_shape=image_shape)
         lines_connected_to_regions = get_line_regions(lines=line_preds, regions=region_preds)
         ordered_lines = order_regions_lines(lines=lines_connected_to_regions, regions=region_preds)
+
         if ordered_lines:
             input_data = TextPredictionInput(image_path = image_path,
                                             line_threshold = args.line_threshold)
