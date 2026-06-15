@@ -2,7 +2,7 @@ import glob
 import os
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
-from reading_order_graph import GraphBasedOrdering
+from .reading_order_graph import GraphBasedOrdering
 graph_order_poly = GraphBasedOrdering()
 
 def load_image_paths(input_folder, extensions=None):

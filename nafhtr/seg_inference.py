@@ -1,5 +1,5 @@
-from image_processing import load_with_torchvision, preprocess_resize_torch_transform, preprocess_resize_smallerof_wh_torch_transform
-from rfdetr import RFDETRSegPreview
+from .image_processing import load_with_torchvision, preprocess_resize_torch_transform, preprocess_resize_smallerof_wh_torch_transform
+from rfdetr import RFDETRSeg2XLarge
 import supervision as sv
 import numpy as np
 import cv2
@@ -10,7 +10,7 @@ from collections import defaultdict
 import torch
 from PIL import Image
 from supervision.detection.utils.iou_and_nms import OverlapFilter, OverlapMetric
-from inference_slicer_modified import InferenceSlicer
+from .inference_slicer_modified import InferenceSlicer
 
 def poly_features(poly_coords, step=1.0, fast_mode=True):
     """Calculates approximate polygon mean thickness using the bounding box if fast_mode=True, or by intersecting a grid with the polygon if fast_mode=False.
@@ -368,9 +368,9 @@ def load_rfdetr_model(model_path, device="cuda", batch_size=1):
         model_path: Path to the pretrained model weights file.
 
     Returns:
-        RFDETRSegPreview: Optimized model ready for inference.
+        RFDETRSeg2XLarge: Optimized model ready for inference.
     """
-    model = RFDETRSegPreview(pretrain_weights=model_path, device=device)
+    model = RFDETRSeg2XLarge(pretrain_weights=model_path, device=device)
     model.optimize_for_inference(batch_size=batch_size)
     return model
 

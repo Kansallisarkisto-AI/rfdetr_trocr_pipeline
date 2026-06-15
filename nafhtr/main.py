@@ -1,10 +1,10 @@
-from seg_inference import load_rfdetr_model, predict_polygons
+from .seg_inference import load_rfdetr_model, predict_polygons
+from .utils import load_image_paths, get_default_region, get_line_regions, order_regions_lines, flatten_lines, process_text_predictions
+from .trocr import get_text_preds, load_trocr_model
 import argparse
-from utils import load_image_paths, get_default_region, get_line_regions, order_regions_lines, flatten_lines, process_text_predictions
 from tqdm import tqdm
-from trocr import get_text_preds, load_trocr_model
 from pydantic import BaseModel
-from xml_koodit import get_xml
+from .xml_koodit import get_xml
 from pathlib import Path
 import os
 import time
@@ -12,7 +12,7 @@ import torch
 import torch.multiprocessing as mp
 
 
-class TextPreditionInput(BaseModel):
+class TextPredictionInput(BaseModel):
     image_path: str
     line_threshold: int
 
@@ -298,8 +298,9 @@ def process_all_images(images, detection_model, recognition_model, processor, ar
             region_preds = get_default_region(image_shape=image_shape)
         lines_connected_to_regions = get_line_regions(lines=line_preds, regions=region_preds)
         ordered_lines = order_regions_lines(lines=lines_connected_to_regions, regions=region_preds)
+
         if ordered_lines:
-            input_data = TextPreditionInput(image_path = image_path,
+            input_data = TextPredictionInput(image_path = image_path,
                                             line_threshold = args.line_threshold)
             text_predictions = get_text_predictions(input_data, ordered_lines, recognition_model, processor)
             if text_predictions:
