@@ -102,7 +102,7 @@ class AltoXML:
         """Saves Alto xml file."""
         with open(path,"w") as f: 
             f.write(indent(str(newsoup))) 
-        #print('XML file saved to ', path)
+        print('XML file saved to ', path)
 
     def format_polygon(self, polygon):
         """Formats polygon from a list of lists into a string."""
@@ -124,11 +124,78 @@ class AltoXML:
             ind_dict[name] = ind_dict.get(name, 0) + 1
         return new_names
 
+    def get_min_max_coordinates(self, data):
+        all_polygons = []
+        for region_dict in data:
+            for line_dict in region_dict['text_lines']:
+                int_polygon = [[int(x), int(y)] for x, y in line_dict['polygon']]
+                all_polygons.append(int_polygon)
+
+        all_points = [point for sublist in all_polygons for point in sublist]
+
+        x_values = [p[0] for p in all_points]
+        y_values = [p[1] for p in all_points]
+
+        min_x, max_x = min(x_values), max(x_values)
+        min_y, max_y = min(y_values), max(y_values)
+
+        return min_x, max_x, min_y, max_y
+    
+    def get_polygon_min_max_coordinates(self, polygon_coords):
+        int_polygon = [[int(x), int(y)] for x, y in polygon_coords]
+
+        x_values = [p[0] for p in int_polygon]
+        y_values = [p[1] for p in int_polygon]
+
+        min_x, max_x = min(x_values), max(x_values)
+        min_y, max_y = min(y_values), max(y_values)
+
+        return min_x, max_x, min_y, max_y
 
     def create_xml(self, data, image_path):
-        """Transports the text line polygons and predicted text content
-        into Alto xml format."""
-        # xml template where to start building the Alto xml            
+        """
+        Serializes text line polygons and predicted text content into ALTO XML format.
+
+        Constructs an ALTO-compliant XML document from the processed predictions,
+        encoding page layout information (regions, text lines, coordinates) alongside
+        OCR content and confidence metrics for each region.
+
+        Parameters
+        ----------
+        data : list[dict]
+            A list of region dictionaries as returned by `process_text_predictions`.
+            Each dict contains:
+                - img_name        (str)   : Source image filename.
+                - height          (int)   : Page image height in pixels.
+                - width           (int)   : Page image width in pixels.
+                - page_conf_mean  (float) : Mean OCR confidence across the page.
+                - page_conf_median(float) : Median OCR confidence across the page.
+                - page_conf_25    (float) : 25th percentile OCR confidence.
+                - page_conf_75    (float) : 75th percentile OCR confidence.
+                - n_long_rowtext  (int)   : Number of long row-text lines on the page.
+                - language        (str)   : Detected or specified language of the page.
+                - region_conf     (float) : Confidence score for this region's segmentation.
+                - region_coords   (list)  : Polygon coordinates defining the region boundary.
+                - region_name     (str)   : Label or class name of the region.
+                - text_lines      (list[dict]) : Per-line dicts with polygon coordinates
+                                                and predicted text content. Dicts contain 'text', 
+                                                'row_length', 'text_conf, 'polygon' keys
+
+        image_path : str or Path
+            Filesystem path to the source image file. Written into the ALTO XML
+            as the source file reference.
+        seg_model_arch : {'yolo', 'rfdetr'}, optional
+            Architecture of the segmentation model used to produce the layout predictions.
+            Determines which model name is recorded in the ALTO XML processing metadata.
+            Defaults to 'rfdetr'.
+
+        Returns
+        -------
+        xml.etree.ElementTree.ElementTree (or str)
+            The constructed ALTO XML document.
+
+        """
+        # xml template where to start building the Alto xml
         newsoup=bs(f"""
         <alto xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xmlns="http://www.loc.gov/standards/alto/ns-v4#"
@@ -186,21 +253,76 @@ class AltoXML:
                 LANGUAGE=data[0]['language'],
                 PHYSICAL_IMG_NR=0)
         
+        # calculate min and max xs and ys
+        min_x, max_x, min_y, max_y = self.get_min_max_coordinates(data)
+
+        # Add margins
+        topmargin_tag = newsoup.new_tag("TopMargin", 
+                                    HPOS="0",
+                                    VPOS="0",
+                                    WIDTH=str(data[0]['width']),
+                                    HEIGHT=str(int(min_y)),
+                                    ID="TM_00001")
+        new_tag_page.append(topmargin_tag)
+
+        leftmargin_tag = newsoup.new_tag("LeftMargin", 
+                                    HPOS="0",
+                                    VPOS=str(int(min_y)),
+                                    WIDTH=str(int(min_x)),
+                                    HEIGHT=str(int(max_y)-int(min_y)),
+                                    ID="LM_00001")
+        new_tag_page.append(leftmargin_tag)
+
+        rightmargin_tag = newsoup.new_tag("RightMargin", 
+                                    HPOS=str(int(max_x)),
+                                    VPOS=str(int(min_y)),
+                                    WIDTH=str(int(data[0]['width'])-int(max_x)),
+                                    HEIGHT=str(int(max_y)-int(min_y)),
+                                    ID="RM_00001")
+        new_tag_page.append(rightmargin_tag)
+
+        bottommargin_tag = newsoup.new_tag('BottomMargin',
+                                    HPOS="0",
+                                    VPOS=str(int(max_y)),
+                                    WIDTH=str(int(data[0]['width'])),
+                                    HEIGHT=str(int(data[0]['height'])-int(max_y)),
+                                    ID="BM_00001")
+        new_tag_page.append(bottommargin_tag)
+        
         new_tag_printspace=newsoup.new_tag("PrintSpace", 
-                HPOS=0,VPOS=0,
-                WIDTH=data[0]['width'],
-                HEIGHT=data[0]['height'])
+                                    HPOS=str(int(min_x)),
+                                    VPOS=str(int(min_y)),
+                                    WIDTH=str(int(max_x)-int(min_x)),
+                                    HEIGHT=str(int(max_y)-int(min_y)),
+                                    ID="PS_00001")
         
         new_tag_page.append(new_tag_printspace)    
         newsoup.Layout.append(new_tag_page)
         
         # add elements to the page
-        text_blocks=bs('',"html.parser")
+        composed_blocks=bs('',"html.parser")
         region_ids = self.get_region_ids(data)
         # Loop over detected regions
         for i, region_dict in enumerate(data):
+            # Calculate HPOS, VPOS, WIDTH and HEIGHT for textblock
+            min_x, max_x, min_y, max_y = self.get_polygon_min_max_coordinates(region_dict['region_coords'])
+
+            # Create ComposedBlock
+            composed_block = newsoup.new_tag("ComposedBlock", 
+                                    HPOS=str(int(min_x)),
+                                    VPOS=str(int(min_y)),
+                                    WIDTH=str(int(max_x)-int(min_x)),
+                                    HEIGHT=str(int(max_y)-int(min_y)),
+                                    ID="block_1_" + str(i+1))
+
             # Create TextBlock element for each region
-            text_block=newsoup.new_tag("TextBlock", ID=region_ids[i])
+            text_block=newsoup.new_tag("TextBlock", 
+                                    HPOS=str(int(min_x)),
+                                    VPOS=str(int(min_y)),
+                                    WIDTH=str(int(max_x)-int(min_x)),
+                                    HEIGHT=str(int(max_y)-int(min_y)),
+                                    ID=region_ids[i])
+
             # Add text region polygon values to Shape tag of the text block
             region_shape=newsoup.new_tag("Shape")
             region_polygon_str = self.format_polygon(region_dict['region_coords'])
@@ -210,9 +332,26 @@ class AltoXML:
             # Loop over text lines belonging to the region
             for j, line_dict in enumerate(region_dict['text_lines']):
                 line_id = region_ids[i] + '_line_' + str(j)
+
+                # Calculate HPOS VPOS WIDTH and HEIGHT for text line
+                min_x, max_x, min_y, max_y = self.get_polygon_min_max_coordinates(line_dict['polygon'])
+
                 # Create TextLine element for each detected text line
-                text_line=newsoup.new_tag("TextLine", ID=line_id)
-                text_string=newsoup.new_tag("String", ID=line_id, CONTENT=line_dict['text'], RL=line_dict['row_length'], WC=str(round(line_dict['text_conf'],2)))
+                text_line=newsoup.new_tag("TextLine", 
+                                            HPOS=str(int(min_x)),
+                                            VPOS=str(int(min_y)),
+                                            WIDTH=str(int(max_x)-int(min_x)),
+                                            HEIGHT=str(int(max_y)-int(min_y)),
+                                            ID=line_id) 
+                text_string=newsoup.new_tag("String", 
+                                            HPOS=str(int(min_x)),
+                                            VPOS=str(int(min_y)),
+                                            WIDTH=str(int(max_x)-int(min_x)),
+                                            HEIGHT=str(int(max_y)-int(min_y)),
+                                            ID=line_id, 
+                                            CONTENT=line_dict['text'], 
+                                            RL=line_dict['row_length'], 
+                                            WC=str(round(line_dict['text_conf'],2)))
                 # Add text line polygon values to Shape tag of the text line
                 line_shape=newsoup.new_tag("Shape")
                 line_polygon_str = self.format_polygon(line_dict['polygon'])
@@ -222,9 +361,10 @@ class AltoXML:
                 text_line.append(text_string)
                 text_block.append(text_line)
             
-            text_blocks.append(text_block)
+            composed_block.append(text_block)
+            composed_blocks.append(composed_block)
         
-        newsoup.PrintSpace.append(text_blocks)
+        newsoup.PrintSpace.append(composed_blocks)
 
         return newsoup
 
