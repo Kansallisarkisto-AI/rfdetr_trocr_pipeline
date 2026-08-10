@@ -30,11 +30,12 @@ def load_image_paths(input_folder, extensions=None):
 def get_default_region(image_shape):
     """Function for creating a default region if no regions are detected."""
     w, h = image_shape
-    region = {'coords': [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]], 
+    region = {'region_coords': [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]],
+            'coords': [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]],
             'max_min': [w, 0.0, h, 0.0], 
             #'class': '1',  tämä lienee turha. ei käytetä get_line_regions tai order_regions_lines funktioissa
-            'name': "paragraph", 
-            'conf': 0.0,
+            'region_name': "paragraph", 
+            'region_conf': 0.0,
             'id': '0', 
             'img_shape': (h, w)}
     return [region]
@@ -177,11 +178,11 @@ def order_regions_lines(lines, regions):
             line_order = graph_order_poly.order(line_max_mins)
             line_polygons = [line_polygons[i] for i in line_order]
             line_confs = [line_confs[i] for i in line_order]
-            new_region = {'region_coords': region['coords'], 
-                        'region_name': region['name'], 
+            new_region = {'region_coords': region.get('coords', region.get('region_coords', None)), 
+                        'region_name': region.get('name', region.get('region_name', None)), 
                         'lines': line_polygons, 
                         'line_confs': line_confs,
-                        'region_conf': region['conf'],
+                        'region_conf': region.get('conf', region.get('region_conf', None)),
                         'img_shape': region['img_shape']}
             region_max_mins.append(region['max_min'])
             regions_with_rows.append(new_region)
@@ -238,9 +239,9 @@ def process_text_predictions(text_predictions, segment_predictions, n_lines):
                         'page_conf_75': text_predictions['page_conf_75'],
                         'n_long_rowtext': text_predictions['n_long_rowtext'],
                         'language': text_predictions['language'],
-                        'region_conf': region['region_conf'],
-                        'region_coords': region['region_coords'],
-                        'region_name': region['region_name'],
+                        'region_conf': region.get('region_conf', region.get('conf', None)),
+                        'region_coords': region.get('region_coords', region.get('coords', None)),
+                        'region_name': region.get('region_name', region.get('name', None)),
                         'text_lines': region_lines_dicts
                         }
         regions.append(region_lines)

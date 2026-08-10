@@ -10,7 +10,8 @@ from collections import defaultdict
 import torch
 from PIL import Image
 from supervision.detection.utils.iou_and_nms import OverlapFilter, OverlapMetric
-from .inference_slicer_modified import InferenceSlicer
+#from .inference_slicer_modified import InferenceSlicer
+from supervision import InferenceSlicer
 
 def poly_features(poly_coords, step=1.0, fast_mode=True):
     """Calculates approximate polygon mean thickness using the bounding box if fast_mode=True, or by intersecting a grid with the polygon if fast_mode=False.
@@ -480,18 +481,25 @@ def predict_polygons(model,
 
         if tile_batch_size < 2:
             def tiling_callback(tile):
-                return model.predict(tile, threshold=confidence_threshold)
+                res = model.predict(tile, threshold=confidence_threshold)
+                res.metadata = {}  # remove metadata for slicer
+                return res
         else:
             def tiling_callback(tiles):
                 original_tile_count = len(tiles)
                 while len(tiles) < tile_batch_size:  # pad using first image as dummy until batch size is filled
                     tiles.append(tiles[0])
-                return model.predict(tiles, threshold=confidence_threshold)[:original_tile_count]
+
+                res = model.predict(tiles, threshold=confidence_threshold)[:original_tile_count]
+                for detections in res:
+                    detections.metadata = {}  # remove metadata for slicer
+                return res
         
         # Predict in slices. InferenceSlicer  ensures that slices do not exceed the boundaries of the original image.
         # As a result, the final slices in the row and column dimensions might be smaller than the specified slice dimensions,
         # if the image's width or height is not a multiple of the slice's width or height minus the overlap.
-        slicer = InferenceSlicer(tiling_callback, slice_wh=tile_size, overlap_wh=tile_overlap, iou_threshold=tile_iou_threshold, overlap_metric=OverlapMetric.IOU, overlap_filter=OverlapFilter.NON_MAX_SUPPRESSION, batch_size=tile_batch_size)
+        #slicer = InferenceSlicer(tiling_callback, slice_wh=tile_size, overlap_wh=tile_overlap, iou_threshold=tile_iou_threshold, overlap_metric=OverlapMetric.IOU, overlap_filter=OverlapFilter.NON_MAX_SUPPRESSION, batch_size=tile_batch_size)
+        slicer = InferenceSlicer(callback=tiling_callback, slice_wh=(tile_size, tile_size), overlap_wh=(tile_overlap, tile_overlap), iou_threshold=tile_iou_threshold, compact_masks=True)
         detections = slicer(preprocessed_image)
     else:  # process as whole image without tiling
         # load with torchvision

@@ -17,12 +17,13 @@ dependencies = [
     "opencv-python-headless>=4.8.1.78",
     "pillow>=9.5.0",
     "pydantic>=2.6.1",
-    "rfdetr>=1.6.4",
+    "rfdetr==1.9.1",
     "shapely>=2.0.6",
     "torch>=2.4.0",
     "transformers>=5.1.0",
     "yattag>=1.16.1",
-    "supervision>=0.27.0",
+    "supervision==0.29.1",
+    "sahi"
 ]
 authors = [
   {name = "Mikko Lipsanen", email = "mikko.lipsanen@kansallisarkisto.fi"},

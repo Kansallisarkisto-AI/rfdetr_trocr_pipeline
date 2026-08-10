@@ -264,6 +264,10 @@ class InferenceSlicer:
                 else:
                     detections_list.extend(future.result())
 
+        #for x in detections_list:
+        #    x.metadata["source_image"] = "image"  # set same source image
+        for detections in detections_list:
+            detections.metadata = {}
         merged = Detections.merge(detections_list=detections_list)
         if self.overlap_filter == OverlapFilter.NONE:
             return merged

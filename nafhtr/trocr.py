@@ -18,7 +18,7 @@ class TrOCRProcessorCustom(TrOCRProcessor):
         self.current_processor = self.image_processor
         self.chat_template = None
 
-def load_trocr_model(model_path, processor_path, device=None):
+def load_trocr_model(model_path, processor_path, device=None, revision="main"):
     """Load a TrOCR model with custom image size support.
     
     Load a TrOCR model with custom image size support and positional encoding interpolation.
@@ -58,20 +58,30 @@ def load_trocr_model(model_path, processor_path, device=None):
     # Load model and processor
     if "onnx" in model_path.lower():
         from optimum.onnxruntime import ORTModelForVision2Seq
-        model = ORTModelForVision2Seq.from_pretrained(model_path, provider="ROCMExecutionProvider", use_cache=False, use_merged=False).to(DEVICE)
+        model = ORTModelForVision2Seq.from_pretrained(model_path, provider="ROCMExecutionProvider", use_cache=False, use_merged=False, revision=revision).to(DEVICE)
     else:
         model = VisionEncoderDecoderModel.from_pretrained(
                                                         model_path,
-                                                        torch_dtype=torch.float16
+                                                        torch_dtype=torch.float16,
+                                                        revision=revision
                                                     ).to(DEVICE)
 
     if model.config.encoder.model_type == "dinov2":
-        processor = TrOCRProcessorCustom.from_pretrained(processor_path)
+        processor = TrOCRProcessorCustom.from_pretrained(processor_path, revision=revision)
+    elif "microsoft" in processor_path.lower():
+        processor = TrOCRProcessor.from_pretrained(processor_path,
+                                        use_fast=True,
+                                        revision=revision)
+        
     else:
         processor = TrOCRProcessor.from_pretrained(processor_path,
                                                 use_fast=True,
                                                 do_resize=True, 
-                                                size={'height': IMG_HEIGHT,'width': IMG_WIDTH})
+                                                #size={'height': IMG_HEIGHT,'width': IMG_WIDTH},
+                                                revision=revision)
+
+        #model.generation_config.no_repeat_ngram_size = 0  # temporary change for some of our models
+        #model.generation_config.num_beams = 5
     
     return model, processor
 
@@ -138,6 +148,68 @@ def get_scores(lgscores):
     return scores
 
 def predict_text(cropped_lines, recognition_model, processor):
+    """Functions for predicting text content from the cropped line images.
+
+    Predict text content from cropped line images using a recognition model.
+
+    Args:
+        cropped_lines: List of cropped text line images.
+        recognition_model: Pre-trained text recognition model.
+        processor: Image processor for the recognition model.
+
+    Returns:
+        tuple: A 2-element tuple containing:
+            - scores (list): Confidence scores for each prediction.
+            - generated_text (list): Predicted text strings for each line.
+    """
+    pixel_values = processor(cropped_lines, return_tensors="pt").pixel_values
+    generated_dict = recognition_model.generate(pixel_values.to(DEVICE, dtype=torch.float16), max_new_tokens=128, return_dict_in_generate=True, output_scores=True)
+    generated_ids = generated_dict['sequences']
+    generated_scores = generated_dict['scores']
+
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)
+
+    # Works for both:
+    # - greedy decoding: num_beams=1
+    # - beam search: num_beams>1
+    token_log_probs = recognition_model.compute_transition_scores(
+        sequences=generated_ids,
+        scores=generated_scores,
+        beam_indices=getattr(generated_dict, "beam_indices", None),
+        normalize_logits=True,
+    )
+
+    pad_token_id = processor.tokenizer.pad_token_id
+
+    # For encoder-decoder models, generated_ids normally begins with a decoder
+    # start token, while transition scores correspond to subsequent tokens.
+    generated_token_ids = generated_ids[:, -token_log_probs.shape[1]:]
+
+    if pad_token_id is None:
+        token_mask = torch.ones_like(
+            generated_token_ids,
+            dtype=torch.bool,
+        )
+    else:
+        token_mask = generated_token_ids.ne(pad_token_id)
+
+    # Exclude special tokens from confidence aggregation where possible.
+    special_token_ids = set(processor.tokenizer.all_special_ids)
+    for special_token_id in special_token_ids:
+        token_mask &= generated_token_ids.ne(special_token_id)
+
+    token_counts = token_mask.sum(dim=1).clamp(min=1)
+
+    # Geometric mean of generated-token probabilities.
+    mean_log_probs = (
+        token_log_probs * token_mask
+    ).sum(dim=1) / token_counts
+
+    scores = mean_log_probs.exp().float().cpu().tolist()
+
+    return scores, generated_text
+
+def predict_text_old(cropped_lines, recognition_model, processor):
     """Functions for predicting text content from the cropped line images.
 
     Predict text content from cropped line images using a recognition model.
