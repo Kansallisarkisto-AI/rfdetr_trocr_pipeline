@@ -48,3 +48,6 @@ Homepage = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 Documentation = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 Repository = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 "Bug Tracker" = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline/issues"
+
+[project.scripts]
+nafhtr = "nafhtr:main.entrypoint"
