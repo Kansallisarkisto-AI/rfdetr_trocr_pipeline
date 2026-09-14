@@ -79,9 +79,6 @@ def load_trocr_model(model_path, processor_path, device=None, revision="main"):
                                                 do_resize=True, 
                                                 #size={'height': IMG_HEIGHT,'width': IMG_WIDTH},
                                                 revision=revision)
-
-        #model.generation_config.no_repeat_ngram_size = 0  # temporary change for some of our models
-        #model.generation_config.num_beams = 5
     
     return model, processor
 
