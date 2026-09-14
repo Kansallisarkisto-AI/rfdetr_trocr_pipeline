@@ -264,6 +264,9 @@ class InferenceSlicer:
                 else:
                     detections_list.extend(future.result())
 
+        # remove metadata because supervision SAHI implementation is a little buggy
+        for detections in detections_list:
+            detections.metadata = {}
         merged = Detections.merge(detections_list=detections_list)
         if self.overlap_filter == OverlapFilter.NONE:
             return merged

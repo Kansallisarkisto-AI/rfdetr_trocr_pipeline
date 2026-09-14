@@ -348,8 +348,7 @@ def worker(rank, world_size, args):
 
     process_all_images(my_images, detection_model, recognition_model, processor, args, rank=rank)
 
-
-if __name__ == "__main__":
+def entrypoint():
     args = parse_args()
 
     if args.multi_gpu:
@@ -364,3 +363,6 @@ if __name__ == "__main__":
     else:
         mp.set_start_method("spawn", force=True)  # important for CUDA
         mp.spawn(worker, args=(ngpu, args), nprocs=ngpu, join=True)
+
+if __name__ == "__main__":
+    entrypoint()

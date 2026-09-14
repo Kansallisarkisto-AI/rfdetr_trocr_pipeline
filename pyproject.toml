@@ -17,13 +17,13 @@ dependencies = [
     "opencv-python-headless>=4.8.1.78",
     "pillow>=9.5.0",
     "pydantic>=2.6.1",
-    "rfdetr>=1.6.4",
+    "rfdetr==1.9.1",
     "shapely>=2.0.6",
     "torch>=2.4.0",
     "transformers>=5.1.0",
     "yattag>=1.16.1",
-    "supervision>=0.27.0",
-    "huggingface-hub>=1.19.0",
+    "supervision==0.29.1",
+    "huggingface-hub>=1.19.0"
 ]
 authors = [
   {name = "Mikko Lipsanen", email = "mikko.lipsanen@kansallisarkisto.fi"},
@@ -48,3 +48,6 @@ Homepage = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 Documentation = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 Repository = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline"
 "Bug Tracker" = "https://github.com/Kansallisarkisto-AI/rfdetr_trocr_pipeline/issues"
+
+[project.scripts]
+nafhtr = "nafhtr:main.entrypoint"
